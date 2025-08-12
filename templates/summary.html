@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Generate Research Summary</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card stats-card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Summary Options</h5>
+            </div>
+            <div class="card-body">
+                <form id="summaryForm">
+                    <div class="mb-3">
+                        <label for="language" class="form-label">Language</label>
+                        <select class="form-select" id="language" name="language">
+                            <option value="en">English</option>
+                            <option value="fr">Français</option>
+                            <option value="ru">Русский</option>
+                        </select>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-custom" id="generateBtn">
+                            <i class="bi bi-gear"></i> Generate Summary
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card stats-card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Summary Features</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-check-circle text-success"></i> Executive Summary</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Key Clinical Findings</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Molecular Mechanisms</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Therapeutic Implications</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Prognostic Factors</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Future Directions</li>
+                </ul>
+                
+                <div class="mt-3 p-3 bg-light rounded">
+                    <small class="text-muted">
+                        The AI will analyze all papers in your database and create a comprehensive summary 
+                        using advanced language models to extract key insights and trends.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Results -->
+<div id="summaryResults" class="row mt-4" style="display: none;">
+    <div class="col-12">
+        <div class="card stats-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Generated Summary</h5>
+                <div>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="exportPdfBtn">
+                        <i class="bi bi-file-pdf"></i> Export PDF
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="copyBtn">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="summaryContent" class="markdown-content"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="mt-3">
+                    <h5>Generating Summary</h5>
+                    <p class="text-muted">Analyzing research papers with AI... This may take a few minutes.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.markdown-content {
+    line-height: 1.6;
+}
+.markdown-content h1, .markdown-content h2, .markdown-content h3 {
+    color: #2c3e50;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+.markdown-content h1 {
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 0.5rem;
+}
+.markdown-content h2 {
+    border-left: 4px solid #3498db;
+    padding-left: 1rem;
+}
+.markdown-content ul, .markdown-content ol {
+    margin-bottom: 1rem;
+}
+.markdown-content li {
+    margin-bottom: 0.5rem;
+}
+.markdown-content p {
+    margin-bottom: 1rem;
+    text-align: justify;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const summaryForm = document.getElementById('summaryForm');
+    const generateBtn = document.getElementById('generateBtn');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    const summaryResults = document.getElementById('summaryResults');
+    const summaryContent = document.getElementById('summaryContent');
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    
+    let currentSummary = '';
+    let currentLanguage = 'en';
+    
+    summaryForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        currentLanguage = document.getElementById('language').value;
+        
+        // Show loading modal
+        loadingModal.show();
+        
+        // Disable generate button
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="bi bi-hourglass"></i> Generating...';
+        
+        // Make API call
+        fetch('/api/generate_summary', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                language: currentLanguage
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            currentSummary = data.summary;
+            
+            // Convert markdown to HTML (basic conversion)
+            const htmlContent = markdownToHtml(data.summary);
+            summaryContent.innerHTML = htmlContent;
+            
+            // Show results
+            summaryResults.style.display = 'block';
+            
+            // Scroll to results
+            summaryResults.scrollIntoView({ behavior: 'smooth' });
+            
+        })
+        .catch(error => {
+            alert('Error generating summary: ' + error.message);
+        })
+        .finally(() => {
+            // Hide loading modal
+            loadingModal.hide();
+            
+            // Re-enable generate button
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="bi bi-gear"></i> Generate Summary';
+        });
+    });
+    
+    // Export PDF button
+    exportPdfBtn.addEventListener('click', function() {
+        if (!currentSummary) return;
+        
+        const blob = new Blob([JSON.stringify({
+            summary: currentSummary,
+            language: currentLanguage
+        })], { type: 'application/json' });
+        
+        const formData = new FormData();
+        formData.append('summary', currentSummary);
+        formData.append('language', currentLanguage);
+        
+        fetch('/api/export_summary', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                summary: currentSummary,
+                language: currentLanguage
+            })
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.blob();
+            }
+            throw new Error('Export failed');
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `aml_summary_${currentLanguage}_${new Date().toISOString().split('T')[0]}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            alert('Error exporting PDF: ' + error.message);
+        });
+    });
+    
+    // Copy button
+    copyBtn.addEventListener('click', function() {
+        if (!currentSummary) return;
+        
+        navigator.clipboard.writeText(currentSummary).then(function() {
+            // Show temporary success message
+            const originalText = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+            copyBtn.classList.add('btn-success');
+            copyBtn.classList.remove('btn-outline-secondary');
+            
+            setTimeout(() => {
+                copyBtn.innerHTML = originalText;
+                copyBtn.classList.remove('btn-success');
+                copyBtn.classList.add('btn-outline-secondary');
+            }, 2000);
+        });
+    });
+    
+    // Basic markdown to HTML converter
+    function markdownToHtml(markdown) {
+        let html = markdown;
+        
+        // Headers
+        html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+        html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+        html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+        
+        // Bold
+        html = html.replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>');
+        
+        // Italic
+        html = html.replace(/\*(.*)\*/gim, '<em>$1</em>');
+        
+        // Lists
+        html = html.replace(/^\* (.*$)/gim, '<li>$1</li>');
+        html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+        
+        // Paragraphs
+        html = html.replace(/\n\n/gim, '</p><p>');
+        html = '<p>' + html + '</p>';
+        
+        // Clean up
+        html = html.replace(/<p><\/p>/g, '');
+        html = html.replace(/<p>(<h[1-6]>.*<\/h[1-6]>)<\/p>/g, '$1');
+        html = html.replace(/<p>(<ul>.*<\/ul>)<\/p>/gs, '$1');
+        
+        return html;
+    }
+});
+</script>
+{% endblock %}

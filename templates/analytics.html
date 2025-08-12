@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Research Analytics</h1>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card stats-card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Research Trends Dashboard</h5>
+            </div>
+            <div class="card-body">
+                <div id="loadingSpinner" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading analytics data...</p>
+                </div>
+                
+                <div id="analyticsContent" style="display: none;">
+                    <!-- Content will be loaded via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Container -->
+<div id="chartsContainer" style="display: none;">
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card stats-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Papers by Year</h5>
+                </div>
+                <div class="card-body">
+                    <div id="papersYearChart"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card stats-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Papers by Type</h5>
+                </div>
+                <div class="card-body">
+                    <div id="papersTypeChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card stats-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Top Journals</h5>
+                </div>
+                <div class="card-body">
+                    <div id="journalsChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalytics();
+});
+
+function loadAnalytics() {
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            displayAnalytics(data);
+        })
+        .catch(error => {
+            console.error('Error loading analytics:', error);
+            document.getElementById('loadingSpinner').innerHTML = 
+                '<div class="alert alert-danger">Error loading analytics data</div>';
+        });
+}
+
+function displayAnalytics(data) {
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const analyticsContent = document.getElementById('analyticsContent');
+    const chartsContainer = document.getElementById('chartsContainer');
+    
+    // Hide loading spinner
+    loadingSpinner.style.display = 'none';
+    
+    // Show content
+    analyticsContent.style.display = 'block';
+    chartsContainer.style.display = 'block';
+    
+    // Display summary stats
+    const stats = data.stats;
+    analyticsContent.innerHTML = `
+        <div class="row text-center">
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-primary">${stats.total_papers}</h3>
+                    <p class="text-muted">Total Papers</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-success">${stats.papers_by_year ? stats.papers_by_year.length : 0}</h3>
+                    <p class="text-muted">Years Covered</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-info">${stats.latest_date || 'N/A'}</h3>
+                    <p class="text-muted">Latest Paper</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h3 class="text-warning">${stats.last_update}</h3>
+                    <p class="text-muted">Last Update</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Create charts
+    const dashboardData = data.dashboard_data;
+    
+    // Papers by Year Chart
+    if (dashboardData.papers_by_year) {
+        createPapersYearChart(dashboardData.papers_by_year);
+    }
+    
+    // Papers by Type Chart
+    if (dashboardData.papers_by_type) {
+        createPapersTypeChart(dashboardData.papers_by_type);
+    }
+    
+    // Top Journals Chart
+    if (dashboardData.top_journals) {
+        createJournalsChart(dashboardData.top_journals);
+    }
+}
+
+function createPapersYearChart(data) {
+    const trace = {
+        x: data.map(d => d.year),
+        y: data.map(d => d.count),
+        type: 'bar',
+        marker: {
+            color: 'rgba(102, 126, 234, 0.8)',
+            line: {
+                color: 'rgba(102, 126, 234, 1)',
+                width: 1
+            }
+        }
+    };
+    
+    const layout = {
+        title: '',
+        xaxis: { title: 'Year' },
+        yaxis: { title: 'Number of Papers' },
+        margin: { t: 20, r: 20, b: 40, l: 40 }
+    };
+    
+    Plotly.newPlot('papersYearChart', [trace], layout, {responsive: true});
+}
+
+function createPapersTypeChart(data) {
+    const trace = {
+        labels: data.map(d => d.type),
+        values: data.map(d => d.count),
+        type: 'pie',
+        marker: {
+            colors: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe']
+        }
+    };
+    
+    const layout = {
+        title: '',
+        margin: { t: 20, r: 20, b: 20, l: 20 }
+    };
+    
+    Plotly.newPlot('papersTypeChart', [trace], layout, {responsive: true});
+}
+
+function createJournalsChart(data) {
+    const trace = {
+        x: data.map(d => d.count),
+        y: data.map(d => d.journal.length > 30 ? d.journal.substring(0, 27) + '...' : d.journal),
+        type: 'bar',
+        orientation: 'h',
+        marker: {
+            color: 'rgba(118, 75, 162, 0.8)',
+            line: {
+                color: 'rgba(118, 75, 162, 1)',
+                width: 1
+            }
+        }
+    };
+    
+    const layout = {
+        title: '',
+        xaxis: { title: 'Number of Papers' },
+        yaxis: { 
+            title: 'Journal',
+            automargin: true
+        },
+        margin: { t: 20, r: 20, b: 40, l: 150 }
+    };
+    
+    Plotly.newPlot('journalsChart', [trace], layout, {responsive: true});
+}
+</script>
+
+<style>
+.stat-item {
+    padding: 1rem;
+}
+.stat-item h3 {
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+.stat-item p {
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+</style>
+{% endblock %}

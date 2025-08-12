@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-custom" data-bs-toggle="modal" data-bs-target="#updateModal">
+                <i class="bi bi-arrow-clockwise"></i> Update Research
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Papers
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.total_papers }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-file-text fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Latest Paper
+                        </div>
+                        <div class="h6 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.latest_date or 'N/A' }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-calendar fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Last Update
+                        </div>
+                        <div class="h6 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.last_update }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-clock fa-2x text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Years Covered
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.papers_by_year|length }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-graph-up fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Papers by Year Chart -->
+{% if stats.papers_by_year %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card stats-card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Papers by Year</h5>
+            </div>
+            <div class="card-body">
+                <div id="papers-by-year-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-12">
+        <div class="card stats-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('generate_summary') }}" class="btn btn-custom">
+                                <i class="bi bi-file-text"></i> Generate Summary
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('browse') }}" class="btn btn-outline-primary">
+                                <i class="bi bi-table"></i> Browse Database
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('analytics') }}" class="btn btn-outline-success">
+                                <i class="bi bi-graph-up"></i> View Analytics
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update Research Modal -->
+<div class="modal fade" id="updateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Update Research Database</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Choose how to update the research database:</p>
+                <div class="d-grid gap-2">
+                    <form method="POST" action="{{ url_for('update_research') }}">
+                        <input type="hidden" name="initial" value="false">
+                        <button type="submit" class="btn btn-primary w-100 mb-2">
+                            <i class="bi bi-arrow-clockwise"></i> Update (New papers only)
+                        </button>
+                    </form>
+                    
+                    <form method="POST" action="{{ url_for('update_research') }}" onsubmit="return confirm('This will process all 243 papers and may take 10-15 minutes. Continue?')">
+                        <input type="hidden" name="initial" value="true">
+                        <button type="submit" class="btn btn-warning w-100">
+                            <i class="bi bi-database"></i> Full Rebuild (All papers)
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <strong>Update:</strong> Only processes papers published since last update.<br>
+                        <strong>Full Rebuild:</strong> Processes all papers from the past year (243 total).
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Papers by Year Chart
+    {% if stats.papers_by_year %}
+    const papersData = {{ stats.papers_by_year | tojson }};
+    
+    const trace = {
+        x: papersData.map(d => d.year),
+        y: papersData.map(d => d.count),
+        type: 'bar',
+        marker: {
+            color: 'rgba(102, 126, 234, 0.8)',
+            line: {
+                color: 'rgba(102, 126, 234, 1)',
+                width: 1
+            }
+        }
+    };
+    
+    const layout = {
+        title: '',
+        xaxis: { title: 'Year' },
+        yaxis: { title: 'Number of Papers' },
+        margin: { t: 20, r: 20, b: 40, l: 40 }
+    };
+    
+    Plotly.newPlot('papers-by-year-chart', [trace], layout, {responsive: true});
+    {% endif %}
+</script>
+{% endblock %}

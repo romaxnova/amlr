@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Browse Research Database</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('api_export_csv') }}" class="btn btn-outline-primary">
+                <i class="bi bi-download"></i> Export CSV
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card stats-card mb-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Filters</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('browse') }}">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="search" class="form-label">Search</label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ search_query }}" placeholder="Search titles and abstracts...">
+                </div>
+                
+                <div class="col-md-3 mb-3">
+                    <label for="type" class="form-label">Article Type</label>
+                    <select class="form-select" id="type" name="type">
+                        <option value="">All Types</option>
+                        {% for type in article_types %}
+                        <option value="{{ type }}" {% if type == selected_type %}selected{% endif %}>
+                            {{ type }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-3 mb-3">
+                    <label for="year" class="form-label">Year</label>
+                    <select class="form-select" id="year" name="year">
+                        <option value="">All Years</option>
+                        {% for year in years %}
+                        <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>
+                            {{ year }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-2 mb-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-custom w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Results Summary -->
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> 
+    Showing {{ papers|length }} papers
+    {% if search_query or selected_type or selected_year %}
+    (filtered)
+    {% endif %}
+</div>
+
+<!-- Papers Table -->
+<div class="card stats-card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Title</th>
+                        <th>Authors</th>
+                        <th>Journal</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>PMID</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for paper in papers %}
+                    <tr>
+                        <td>
+                            <strong>{{ paper.title[:100] }}{% if paper.title|length > 100 %}...{% endif %}</strong>
+                            {% if paper.main_findings %}
+                            <br><small class="text-muted">{{ paper.main_findings[:150] }}{% if paper.main_findings|length > 150 %}...{% endif %}</small>
+                            {% endif %}
+                        </td>
+                        <td class="text-truncate" style="max-width: 200px;">
+                            {{ paper.authors }}
+                        </td>
+                        <td class="text-truncate" style="max-width: 150px;">
+                            {{ paper.journal }}
+                        </td>
+                        <td>
+                            {% if paper.publish_date %}
+                            {{ paper.publish_date }}
+                            {% else %}
+                            <span class="text-muted">Unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ paper.article_type or 'Unknown' }}</span>
+                        </td>
+                        <td>
+                            {% if paper.pmid %}
+                            <a href="https://pubmed.ncbi.nlm.nih.gov/{{ paper.pmid }}/" target="_blank" class="text-decoration-none">
+                                {{ paper.pmid }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-primary" 
+                                    data-bs-toggle="modal" data-bs-target="#paperModal"
+                                    onclick="showPaperDetails({{ paper|tojson }})">
+                                <i class="bi bi-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <div class="text-muted">
+                                <i class="bi bi-inbox"></i><br>
+                                No papers found matching your criteria.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Paper Details Modal -->
+<div class="modal fade" id="paperModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="paperModalTitle">Paper Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="paperModalContent">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a id="pubmedLink" href="#" target="_blank" class="btn btn-primary">
+                    <i class="bi bi-box-arrow-up-right"></i> View on PubMed
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showPaperDetails(paper) {
+    const modal = document.getElementById('paperModal');
+    const title = document.getElementById('paperModalTitle');
+    const content = document.getElementById('paperModalContent');
+    const pubmedLink = document.getElementById('pubmedLink');
+    
+    title.textContent = paper.title || 'Unknown Title';
+    
+    let html = `
+        <div class="row">
+            <div class="col-md-6">
+                <strong>Authors:</strong><br>
+                <span class="text-muted">${paper.authors || 'Unknown'}</span>
+            </div>
+            <div class="col-md-6">
+                <strong>Journal:</strong><br>
+                <span class="text-muted">${paper.journal || 'Unknown'}</span>
+            </div>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-md-4">
+                <strong>Publication Date:</strong><br>
+                <span class="text-muted">${paper.publish_date || 'Unknown'}</span>
+            </div>
+            <div class="col-md-4">
+                <strong>Article Type:</strong><br>
+                <span class="badge bg-secondary">${paper.article_type || 'Unknown'}</span>
+            </div>
+            <div class="col-md-4">
+                <strong>PMID:</strong><br>
+                <span class="text-muted">${paper.pmid || 'N/A'}</span>
+            </div>
+        </div>
+    `;
+    
+    if (paper.main_findings) {
+        html += `
+            <div class="mt-4">
+                <strong>Main Findings:</strong>
+                <div class="mt-2 p-3 bg-light rounded">
+                    ${paper.main_findings}
+                </div>
+            </div>
+        `;
+    }
+    
+    if (paper.abstract) {
+        html += `
+            <div class="mt-4">
+                <strong>Abstract:</strong>
+                <div class="mt-2 p-3 bg-light rounded" style="max-height: 300px; overflow-y: auto;">
+                    ${paper.abstract}
+                </div>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+    
+    // Update PubMed link
+    if (paper.pmid) {
+        pubmedLink.href = `https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/`;
+        pubmedLink.style.display = 'inline-block';
+    } else {
+        pubmedLink.style.display = 'none';
+    }
+}
+
+// Auto-submit form when filters change
+document.addEventListener('DOMContentLoaded', function() {
+    const typeSelect = document.getElementById('type');
+    const yearSelect = document.getElementById('year');
+    
+    typeSelect.addEventListener('change', function() {
+        this.form.submit();
+    });
+    
+    yearSelect.addEventListener('change', function() {
+        this.form.submit();
+    });
+});
+</script>
+{% endblock %}
