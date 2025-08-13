@@ -2,14 +2,57 @@
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Generate Research Summary</h1>
+    <h1 class="h2">Smart Research Summary</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-outline-primary" onclick="refreshSummaryInfo()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Status Cards -->
+<div class="row mb-4">
+    {% for lang_code, lang_name in [('en', 'English'), ('fr', 'Français'), ('ru', 'Русский')] %}
+    <div class="col-md-4 mb-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">{{ lang_name }} Summary</h6>
+                        {% if summary_info[lang_code]['exists'] %}
+                            <span class="badge bg-success">Available</span>
+                            <small class="d-block text-muted mt-1">
+                                Version {{ summary_info[lang_code]['version'] }}<br>
+                                {{ summary_info[lang_code]['paper_count'] }} papers
+                            </small>
+                        {% else %}
+                            <span class="badge bg-secondary">Not Generated</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-custom" onclick="generateSummary('{{ lang_code }}')">
+                            {% if summary_info[lang_code]['exists'] %}
+                                Update
+                            {% else %}
+                                Generate
+                            {% endif %}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 </div>
 
 <div class="row">
-    <div class="col-lg-8">
+    <!-- Summary Generation Panel -->
+    <div class="col-lg-4">
         <div class="card stats-card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Summary Options</h5>
+                <h5 class="card-title mb-0">Generation Options</h5>
             </div>
             <div class="card-body">
                 <form id="summaryForm">
@@ -22,76 +65,115 @@
                         </select>
                     </div>
                     
-                    <div class="d-grid">
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="forceRegenerate" name="forceRegenerate">
+                            <label class="form-check-label" for="forceRegenerate">
+                                Force Complete Regeneration
+                            </label>
+                        </div>
+                        <small class="text-muted">By default, only new papers will be integrated.</small>
+                    </div>
+                    
+                    <!-- Key Terms Filter -->
+                    <div class="mb-3">
+                        <label class="form-label">Filter by Key Terms (Optional)</label>
+                        <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;" id="keyTermsContainer">
+                            <div class="text-center text-muted" id="loadingTerms">
+                                <i class="bi bi-hourglass-split"></i> Loading key terms...
+                            </div>
+                        </div>
+                        <small class="text-muted">Select specific terms to focus the summary on particular aspects.</small>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-custom" id="generateBtn">
-                            <i class="bi bi-gear"></i> Generate Summary
+                            <i class="bi bi-gear"></i> <span id="generateBtnText">Generate Summary</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" onclick="clearSummary()" id="clearBtn" style="display: none;">
+                            <i class="bi bi-trash"></i> Clear Summary
                         </button>
                     </div>
                 </form>
             </div>
         </div>
-    </div>
-    
-    <div class="col-lg-4">
-        <div class="card stats-card">
+        
+        <!-- Smart Features Info -->
+        <div class="card stats-card mt-3">
             <div class="card-header">
-                <h5 class="card-title mb-0">Summary Features</h5>
+                <h6 class="card-title mb-0">🧠 Smart Features</h6>
             </div>
             <div class="card-body">
-                <ul class="list-unstyled">
-                    <li><i class="bi bi-check-circle text-success"></i> Executive Summary</li>
-                    <li><i class="bi bi-check-circle text-success"></i> Key Clinical Findings</li>
-                    <li><i class="bi bi-check-circle text-success"></i> Molecular Mechanisms</li>
-                    <li><i class="bi bi-check-circle text-success"></i> Therapeutic Implications</li>
-                    <li><i class="bi bi-check-circle text-success"></i> Prognostic Factors</li>
-                    <li><i class="bi bi-check-circle text-success"></i> Future Directions</li>
+                <ul class="list-unstyled mb-0">
+                    <li><i class="bi bi-check-circle text-success"></i> Incremental Updates</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Key Terms Extraction</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Trend Analysis</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Multi-language Support</li>
+                    <li><i class="bi bi-check-circle text-success"></i> Version Control</li>
                 </ul>
-                
-                <div class="mt-3 p-3 bg-light rounded">
-                    <small class="text-muted">
-                        The AI will analyze all papers in your database and create a comprehensive summary 
-                        using advanced language models to extract key insights and trends.
-                    </small>
-                </div>
             </div>
         </div>
     </div>
-</div>
-
-<!-- Summary Results -->
-<div id="summaryResults" class="row mt-4" style="display: none;">
-    <div class="col-12">
-        <div class="card stats-card">
+    
+    <!-- Summary Display -->
+    <div class="col-lg-8">
+        <div class="card stats-card" id="summaryCard">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Generated Summary</h5>
-                <div>
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="exportPdfBtn">
+                <h5 class="card-title mb-0">Research Summary</h5>
+                <div class="btn-group" role="group" id="summaryActions" style="display: none;">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="exportSummary('pdf')">
                         <i class="bi bi-file-pdf"></i> Export PDF
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="copyBtn">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copySummary()">
                         <i class="bi bi-clipboard"></i> Copy
                     </button>
                 </div>
             </div>
             <div class="card-body">
-                <div id="summaryContent" class="markdown-content"></div>
+                <div id="summaryResult">
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-file-text fs-1"></i>
+                        <p class="mt-3">No summary generated yet.</p>
+                        <p class="small">Select your options and click "Generate Summary" to begin.</p>
+                    </div>
+                </div>
+                
+                <!-- Summary Metadata -->
+                <div id="summaryMetadata" class="mt-3 p-3 bg-light rounded" style="display: none;">
+                    <div class="row text-center">
+                        <div class="col-3">
+                            <div class="fw-bold" id="totalPapers">-</div>
+                            <small class="text-muted">Total Papers</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fw-bold" id="newPapers">-</div>
+                            <small class="text-muted">New Papers</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fw-bold" id="summaryVersion">-</div>
+                            <small class="text-muted">Version</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fw-bold" id="updateType">-</div>
+                            <small class="text-muted">Update Type</small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Loading Modal -->
-<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary" role="status">
+                <div class="spinner-border text-primary mb-3" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <div class="mt-3">
-                    <h5>Generating Summary</h5>
-                    <p class="text-muted">Analyzing research papers with AI... This may take a few minutes.</p>
-                </div>
+                <h5>Generating Summary</h5>
+                <p class="mb-0" id="loadingMessage">Analyzing research papers with AI...</p>
             </div>
         </div>
     </div>
@@ -100,68 +182,52 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-.markdown-content {
-    line-height: 1.6;
-}
-.markdown-content h1, .markdown-content h2, .markdown-content h3 {
-    color: #2c3e50;
-    margin-top: 1.5rem;
-    margin-bottom: 1rem;
-}
-.markdown-content h1 {
-    border-bottom: 2px solid #3498db;
-    padding-bottom: 0.5rem;
-}
-.markdown-content h2 {
-    border-left: 4px solid #3498db;
-    padding-left: 1rem;
-}
-.markdown-content ul, .markdown-content ol {
-    margin-bottom: 1rem;
-}
-.markdown-content li {
-    margin-bottom: 0.5rem;
-}
-.markdown-content p {
-    margin-bottom: 1rem;
-    text-align: justify;
-}
-</style>
-
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const summaryForm = document.getElementById('summaryForm');
-    const generateBtn = document.getElementById('generateBtn');
-    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
-    const summaryResults = document.getElementById('summaryResults');
-    const summaryContent = document.getElementById('summaryContent');
-    const exportPdfBtn = document.getElementById('exportPdfBtn');
-    const copyBtn = document.getElementById('copyBtn');
-    
     let currentSummary = '';
     let currentLanguage = 'en';
     
-    summaryForm.addEventListener('submit', function(e) {
+    // Load key terms on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadKeyTerms();
+    });
+    
+    // Form submission
+    document.getElementById('summaryForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        const language = document.getElementById('language').value;
+        const forceRegenerate = document.getElementById('forceRegenerate').checked;
+        const selectedTerms = getSelectedTerms();
         
-        currentLanguage = document.getElementById('language').value;
+        generateSummaryWithOptions(language, forceRegenerate, selectedTerms);
+    });
+    
+    function generateSummary(language) {
+        document.getElementById('language').value = language;
+        document.getElementById('summaryForm').dispatchEvent(new Event('submit'));
+    }
+    
+    function generateSummaryWithOptions(language, forceRegenerate = false, selectedTerms = []) {
+        currentLanguage = language;
         
         // Show loading modal
+        const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
         loadingModal.show();
         
-        // Disable generate button
+        // Update button state
+        const generateBtn = document.getElementById('generateBtn');
+        const generateBtnText = document.getElementById('generateBtnText');
         generateBtn.disabled = true;
-        generateBtn.innerHTML = '<i class="bi bi-hourglass"></i> Generating...';
+        generateBtnText.textContent = 'Generating...';
         
-        // Make API call
         fetch('/api/generate_summary', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                language: currentLanguage
+                language: language,
+                force_regenerate: forceRegenerate,
+                selected_terms: selectedTerms
             })
         })
         .then(response => response.json())
@@ -170,44 +236,98 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.error);
             }
             
-            currentSummary = data.summary;
+            displaySummary(data);
+            updateSummaryMetadata(data);
             
-            // Convert markdown to HTML (basic conversion)
-            const htmlContent = markdownToHtml(data.summary);
-            summaryContent.innerHTML = htmlContent;
-            
-            // Show results
-            summaryResults.style.display = 'block';
-            
-            // Scroll to results
-            summaryResults.scrollIntoView({ behavior: 'smooth' });
-            
+            // Show success message
+            showAlert('Summary generated successfully!', 'success');
         })
         .catch(error => {
-            alert('Error generating summary: ' + error.message);
+            console.error('Error:', error);
+            showAlert('Error generating summary: ' + error.message, 'error');
         })
         .finally(() => {
             // Hide loading modal
             loadingModal.hide();
             
-            // Re-enable generate button
+            // Reset button state
             generateBtn.disabled = false;
-            generateBtn.innerHTML = '<i class="bi bi-gear"></i> Generate Summary';
+            generateBtnText.textContent = 'Generate Summary';
         });
-    });
+    }
     
-    // Export PDF button
-    exportPdfBtn.addEventListener('click', function() {
-        if (!currentSummary) return;
+    function loadKeyTerms() {
+        fetch('/api/key_terms')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('keyTermsContainer');
+            const loadingDiv = document.getElementById('loadingTerms');
+            
+            if (data.key_terms && data.key_terms.length > 0) {
+                // Sort by frequency
+                const sortedTerms = data.key_terms.sort((a, b) => b.frequency - a.frequency);
+                
+                container.innerHTML = '';
+                sortedTerms.forEach(term => {
+                    const div = document.createElement('div');
+                    div.className = 'form-check form-check-inline mb-1';
+                    div.innerHTML = `
+                        <input class="form-check-input" type="checkbox" value="${term.term}" id="term_${term.term.replace(/[^a-zA-Z0-9]/g, '_')}">
+                        <label class="form-check-label" for="term_${term.term.replace(/[^a-zA-Z0-9]/g, '_')}">
+                            ${term.term} <span class="badge bg-secondary">${term.frequency}</span>
+                        </label>
+                    `;
+                    container.appendChild(div);
+                });
+            } else {
+                loadingDiv.innerHTML = '<i class="bi bi-info-circle"></i> No key terms extracted yet.';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading key terms:', error);
+            const loadingDiv = document.getElementById('loadingTerms');
+            loadingDiv.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Failed to load key terms.';
+        });
+    }
+    
+    function getSelectedTerms() {
+        const checkboxes = document.querySelectorAll('#keyTermsContainer input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    
+    function displaySummary(data) {
+        currentSummary = data.summary;
         
-        const blob = new Blob([JSON.stringify({
-            summary: currentSummary,
-            language: currentLanguage
-        })], { type: 'application/json' });
+        // Convert markdown to HTML (basic conversion)
+        let htmlContent = data.summary
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>')
+            .replace(/^(.)/g, '<p>$1')
+            .replace(/(.)$/g, '$1</p>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/###\s+(.*?)<br>/g, '<h5>$1</h5>')
+            .replace(/##\s+(.*?)<br>/g, '<h4>$1</h4>')
+            .replace(/#\s+(.*?)<br>/g, '<h3>$1</h3>');
         
-        const formData = new FormData();
-        formData.append('summary', currentSummary);
-        formData.append('language', currentLanguage);
+        document.getElementById('summaryResult').innerHTML = htmlContent;
+        document.getElementById('summaryActions').style.display = 'block';
+        document.getElementById('clearBtn').style.display = 'block';
+    }
+    
+    function updateSummaryMetadata(data) {
+        document.getElementById('totalPapers').textContent = data.total_papers || '-';
+        document.getElementById('newPapers').textContent = data.new_papers || '-';
+        document.getElementById('summaryVersion').textContent = data.version || '-';
+        document.getElementById('updateType').textContent = (data.update_type || '-').charAt(0).toUpperCase() + (data.update_type || '-').slice(1);
+        document.getElementById('summaryMetadata').style.display = 'block';
+    }
+    
+    function exportSummary(format) {
+        if (!currentSummary) {
+            showAlert('No summary to export', 'error');
+            return;
+        }
         
         fetch('/api/export_summary', {
             method: 'POST',
@@ -226,69 +346,75 @@ document.addEventListener('DOMContentLoaded', function() {
             throw new Error('Export failed');
         })
         .then(blob => {
+            // Download file
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = `aml_summary_${currentLanguage}_${new Date().toISOString().split('T')[0]}.pdf`;
+            a.download = `AML_Research_Summary_${currentLanguage}.pdf`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
+            
+            showAlert('Summary exported successfully!', 'success');
         })
         .catch(error => {
-            alert('Error exporting PDF: ' + error.message);
+            console.error('Error:', error);
+            showAlert('Error exporting summary', 'error');
         });
-    });
+    }
     
-    // Copy button
-    copyBtn.addEventListener('click', function() {
-        if (!currentSummary) return;
+    function copySummary() {
+        if (!currentSummary) {
+            showAlert('No summary to copy', 'error');
+            return;
+        }
         
         navigator.clipboard.writeText(currentSummary).then(function() {
-            // Show temporary success message
-            const originalText = copyBtn.innerHTML;
-            copyBtn.innerHTML = '<i class="bi bi-check"></i> Copied!';
-            copyBtn.classList.add('btn-success');
-            copyBtn.classList.remove('btn-outline-secondary');
-            
-            setTimeout(() => {
-                copyBtn.innerHTML = originalText;
-                copyBtn.classList.remove('btn-success');
-                copyBtn.classList.add('btn-outline-secondary');
-            }, 2000);
+            showAlert('Summary copied to clipboard!', 'success');
+        }).catch(function(err) {
+            console.error('Could not copy text: ', err);
+            showAlert('Failed to copy summary', 'error');
         });
-    });
-    
-    // Basic markdown to HTML converter
-    function markdownToHtml(markdown) {
-        let html = markdown;
-        
-        // Headers
-        html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-        html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-        html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-        
-        // Bold
-        html = html.replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>');
-        
-        // Italic
-        html = html.replace(/\*(.*)\*/gim, '<em>$1</em>');
-        
-        // Lists
-        html = html.replace(/^\* (.*$)/gim, '<li>$1</li>');
-        html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-        
-        // Paragraphs
-        html = html.replace(/\n\n/gim, '</p><p>');
-        html = '<p>' + html + '</p>';
-        
-        // Clean up
-        html = html.replace(/<p><\/p>/g, '');
-        html = html.replace(/<p>(<h[1-6]>.*<\/h[1-6]>)<\/p>/g, '$1');
-        html = html.replace(/<p>(<ul>.*<\/ul>)<\/p>/gs, '$1');
-        
-        return html;
     }
-});
+    
+    function clearSummary() {
+        document.getElementById('summaryResult').innerHTML = `
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-file-text fs-1"></i>
+                <p class="mt-3">No summary generated yet.</p>
+                <p class="small">Select your options and click "Generate Summary" to begin.</p>
+            </div>
+        `;
+        document.getElementById('summaryActions').style.display = 'none';
+        document.getElementById('summaryMetadata').style.display = 'none';
+        document.getElementById('clearBtn').style.display = 'none';
+        currentSummary = '';
+    }
+    
+    function refreshSummaryInfo() {
+        location.reload();
+    }
+    
+    function showAlert(message, type) {
+        // Create and show Bootstrap alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insert at top of content
+        const content = document.querySelector('.main-content');
+        content.insertBefore(alertDiv, content.firstChild);
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
 </script>
 {% endblock %}

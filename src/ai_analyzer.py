@@ -2,15 +2,24 @@ import os
 from openai import OpenAI
 from typing import List, Dict
 import json
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class AIAnalyzer:
     def __init__(self):
         try:
+            api_key = os.getenv('XAI_API_KEY')
+            if not api_key:
+                raise ValueError("XAI_API_KEY not found in environment variables")
+            
             self.client = OpenAI(
-                api_key=os.getenv('XAI_API_KEY'),
+                api_key=api_key,
                 base_url="https://api.x.ai/v1"
             )
-            self.model = "grok-beta"
+            self.model = "grok-2"
+            print("AI Analyzer initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize AI client: {e}")
             self.client = None
@@ -113,6 +122,112 @@ class AIAnalyzer:
             print(f"Error generating summary: {e}")
             return "Summary generation failed"
     
+    def extract_key_terms(self, paper: Dict) -> List[str]:
+        """Extract key medical/research terms from a paper"""
+        if not self.client:
+            return []
+            
+        prompt = f"""
+        Extract key medical and research terms from the following AML/TP53 research paper.
+        Focus on: drugs, genes, proteins, pathways, techniques, biomarkers, and clinical terms.
+        
+        Title: {paper.get('title', 'N/A')}
+        Abstract: {paper.get('abstract', 'N/A')}
+        
+        Provide a comma-separated list of important terms. Be precise and use standard nomenclature.
+        Examples: TP53, MDM2, CPX-351, tetrandrine, mTOR, CRISPR, qPCR, overall survival
+        
+        Key terms:
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a medical literature expert. Extract precise, standardized medical and research terms."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150,
+                temperature=0.2
+            )
+            
+            terms_text = response.choices[0].message.content.strip()
+            # Clean and split terms
+            terms = [term.strip() for term in terms_text.split(',') if term.strip()]
+            # Remove duplicates and normalize
+            unique_terms = list(set([term for term in terms if len(term) > 1]))
+            
+            return unique_terms[:20]  # Limit to 20 terms
+            
+        except Exception as e:
+            print(f"Error extracting key terms: {e}")
+            return []
+    
+    def generate_incremental_summary(self, existing_summary: str, new_papers: List[Dict], 
+                                   language: str = "en") -> str:
+        """Generate an updated summary incorporating new papers"""
+        if not self.client:
+            return existing_summary
+        
+        # Extract findings from new papers
+        new_findings = []
+        for paper in new_papers:
+            if paper.get('main_findings'):
+                new_findings.append({
+                    'title': paper.get('title', 'Unknown'),
+                    'date': paper.get('publish_date', 'Unknown'),
+                    'findings': paper.get('main_findings', ''),
+                    'key_terms': paper.get('key_terms', [])
+                })
+        
+        if not new_findings:
+            return existing_summary
+        
+        language_prompts = {
+            "en": "Update the research summary in English",
+            "fr": "Mettez à jour le résumé de recherche en français", 
+            "ru": "Обновите обзор исследований на русском языке"
+        }
+        
+        language_instruction = language_prompts.get(language, language_prompts["en"])
+        
+        prompt = f"""
+        {language_instruction} by incorporating the following new research findings into the existing comprehensive summary.
+
+        EXISTING SUMMARY:
+        {existing_summary}
+
+        NEW RESEARCH FINDINGS TO INTEGRATE:
+        {json.dumps(new_findings, indent=2)}
+
+        Instructions:
+        1. Integrate new findings into the appropriate sections
+        2. Update statistics and trends
+        3. Highlight any new therapeutic targets or biomarkers
+        4. Maintain the existing structure and format
+        5. Add a "Recent Updates" section if significant new information is found
+        6. Keep the comprehensive nature while being concise
+
+        Provide the updated complete summary in markdown format.
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": f"You are an expert medical researcher. Update summaries accurately in {language}."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=3500,
+                temperature=0.4
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            print(f"Error generating incremental summary: {e}")
+            return existing_summary
+
     def extract_research_trends(self, papers: List[Dict]) -> Dict:
         """Extract research trends and patterns"""
         

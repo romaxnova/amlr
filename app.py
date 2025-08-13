@@ -70,6 +70,10 @@ def update_research():
                 main_findings = analyzer.analyze_paper(paper)
                 paper['main_findings'] = main_findings
                 
+                # Extract key terms
+                key_terms = analyzer.extract_key_terms(paper)
+                paper['key_terms'] = key_terms
+                
                 # Insert into database
                 if db.insert_paper(paper):
                     processed_count += 1
@@ -91,30 +95,116 @@ def update_research():
 @app.route('/generate_summary')
 def generate_summary():
     """Show summary generation page"""
-    return render_template('summary.html', current_endpoint='generate_summary')
+    # Get existing summary info
+    summary_info = {}
+    for lang in ['en', 'fr', 'ru']:
+        existing = db.get_latest_summary(lang)
+        summary_info[lang] = {
+            'exists': existing is not None,
+            'version': existing['version'] if existing else 0,
+            'paper_count': existing['paper_count'] if existing else 0,
+            'last_update': existing['created_at'] if existing else None
+        }
+    
+    # Get key terms for filtering
+    key_terms = db.get_all_key_terms()
+    
+    return render_template('summary.html', 
+                         current_endpoint='generate_summary',
+                         summary_info=summary_info,
+                         key_terms=key_terms)
 
 @app.route('/api/generate_summary', methods=['POST'])
 def api_generate_summary():
-    """Generate comprehensive summary"""
+    """Generate or update comprehensive summary"""
     try:
         language = request.json.get('language', 'en')
+        force_regenerate = request.json.get('force_regenerate', False)
+        selected_terms = request.json.get('selected_terms', [])
         
-        # Get all papers from database
-        papers = db.get_all_papers()
+        # Get papers (filtered by terms if specified)
+        if selected_terms:
+            papers = db.get_papers_by_terms(selected_terms)
+        else:
+            papers = db.get_all_papers()
         
         if not papers:
-            return jsonify({'error': 'No papers found in database'}), 400
+            return jsonify({'error': 'No papers found'}), 400
         
-        # Generate summary
-        summary = analyzer.generate_comprehensive_summary(papers, language)
+        # Check if we have an existing summary
+        existing_summary = db.get_latest_summary(language)
         
-        return jsonify({
-            'summary': summary,
-            'total_papers': len(papers),
-            'generated_at': datetime.now().isoformat()
-        })
+        if existing_summary and not force_regenerate:
+            # Check if there are new papers since last summary
+            latest_paper_date = existing_summary['latest_paper_date']
+            new_papers = db.get_papers_after_date(latest_paper_date)
+            
+            if new_papers:
+                # Generate incremental update
+                updated_content = analyzer.generate_incremental_summary(
+                    existing_summary['content'], new_papers, language
+                )
+                
+                # Extract trends from all papers
+                trends = analyzer.extract_research_trends(papers)
+                
+                # Save updated summary
+                version = db.save_research_summary(
+                    updated_content, language, len(papers),
+                    max(p['publish_date'] for p in papers if p.get('publish_date')),
+                    trends
+                )
+                
+                return jsonify({
+                    'summary': updated_content,
+                    'total_papers': len(papers),
+                    'new_papers': len(new_papers),
+                    'version': version,
+                    'update_type': 'incremental',
+                    'trends': trends,
+                    'generated_at': datetime.now().isoformat()
+                })
+            else:
+                # Return existing summary
+                return jsonify({
+                    'summary': existing_summary['content'],
+                    'total_papers': existing_summary['paper_count'],
+                    'new_papers': 0,
+                    'version': existing_summary['version'],
+                    'update_type': 'existing',
+                    'trends': {
+                        'key_trends': existing_summary['key_trends'],
+                        'therapeutic_targets': existing_summary['therapeutic_targets'],
+                        'prognostic_markers': existing_summary['prognostic_markers']
+                    },
+                    'generated_at': existing_summary['created_at']
+                })
+        else:
+            # Generate new complete summary
+            summary = analyzer.generate_comprehensive_summary(papers, language)
+            trends = analyzer.extract_research_trends(papers)
+            
+            # Save new summary
+            version = db.save_research_summary(
+                summary, language, len(papers),
+                max(p['publish_date'] for p in papers if p.get('publish_date')),
+                trends
+            )
+            
+            return jsonify({
+                'summary': summary,
+                'total_papers': len(papers),
+                'new_papers': len(papers),
+                'version': version,
+                'update_type': 'complete',
+                'trends': trends,
+                'generated_at': datetime.now().isoformat()
+            })
         
     except Exception as e:
+        print(f"Error generating summary: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/export_summary', methods=['POST'])
@@ -202,6 +292,15 @@ def api_stats():
             'dashboard_data': dashboard_data
         })
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/key_terms')
+def api_key_terms():
+    """Get all key terms with frequencies"""
+    try:
+        terms = db.get_all_key_terms()
+        return jsonify({'key_terms': terms})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
