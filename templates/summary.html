@@ -186,9 +186,10 @@
     let currentSummary = '';
     let currentLanguage = 'en';
     
-    // Load key terms on page load
+    // Load key terms and existing summary on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadKeyTerms();
+        loadExistingSummary(); // Load existing summary automatically
     });
     
     // Form submission
@@ -199,6 +200,12 @@
         const selectedTerms = getSelectedTerms();
         
         generateSummaryWithOptions(language, forceRegenerate, selectedTerms);
+    });
+    
+    // Language change handler
+    document.getElementById('language').addEventListener('change', function(e) {
+        const selectedLanguage = e.target.value;
+        loadExistingSummaryForLanguage(selectedLanguage);
     });
     
     function generateSummary(language) {
@@ -232,6 +239,8 @@
         })
         .then(response => response.json())
         .then(data => {
+            console.log('API Response:', data); // Debug log
+            
             if (data.error) {
                 throw new Error(data.error);
             }
@@ -239,8 +248,17 @@
             displaySummary(data);
             updateSummaryMetadata(data);
             
-            // Show success message
-            showAlert('Summary generated successfully!', 'success');
+            // Show appropriate message based on update type
+            let message = data.message || 'Summary generated successfully!';
+            let alertType = 'success';
+            
+            if (data.update_type === 'no_update') {
+                alertType = 'info';
+            } else if (data.update_type === 'incremental') {
+                alertType = 'success';
+            }
+            
+            showAlert(message, alertType);
         })
         .catch(error => {
             console.error('Error:', error);
@@ -290,6 +308,51 @@
         });
     }
     
+    function loadExistingSummary() {
+        // Load existing summary for default language (English)
+        const defaultLanguage = document.getElementById('language').value || 'en';
+        
+        fetch(`/api/get_summary/${defaultLanguage}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.exists && data.summary) {
+                currentLanguage = defaultLanguage;
+                displaySummary(data);
+                updateSummaryMetadata(data);
+                
+                // Show info message that it's an existing summary
+                showAlert(`Loaded existing ${defaultLanguage.toUpperCase()} summary (Version ${data.version})`, 'info');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading existing summary:', error);
+            // Don't show error to user - it's fine if no summary exists
+        });
+    }
+    
+    function loadExistingSummaryForLanguage(language) {
+        fetch(`/api/get_summary/${language}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.exists && data.summary) {
+                currentLanguage = language;
+                displaySummary(data);
+                updateSummaryMetadata(data);
+                
+                // Show info message
+                showAlert(`Loaded existing ${language.toUpperCase()} summary (Version ${data.version})`, 'info');
+            } else {
+                // Clear current summary if no summary exists for this language
+                clearSummary();
+                showAlert(`No ${language.toUpperCase()} summary available. Click "Generate Summary" to create one.`, 'info');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading summary for language:', error);
+            clearSummary();
+        });
+    }
+    
     function getSelectedTerms() {
         const checkboxes = document.querySelectorAll('#keyTermsContainer input[type="checkbox"]:checked');
         return Array.from(checkboxes).map(cb => cb.value);
@@ -297,22 +360,45 @@
     
     function displaySummary(data) {
         currentSummary = data.summary;
+        console.log('Displaying summary:', data); // Debug log
         
-        // Convert markdown to HTML (basic conversion)
-        let htmlContent = data.summary
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/\n/g, '<br>')
-            .replace(/^(.)/g, '<p>$1')
-            .replace(/(.)$/g, '$1</p>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/###\s+(.*?)<br>/g, '<h5>$1</h5>')
-            .replace(/##\s+(.*?)<br>/g, '<h4>$1</h4>')
-            .replace(/#\s+(.*?)<br>/g, '<h3>$1</h3>');
+        // Convert markdown to HTML with better formatting
+        let htmlContent = data.summary;
         
-        document.getElementById('summaryResult').innerHTML = htmlContent;
+        // First handle headers
+        htmlContent = htmlContent.replace(/^### (.*$)/gim, '<h5 class="mt-4 mb-2">$1</h5>');
+        htmlContent = htmlContent.replace(/^## (.*$)/gim, '<h4 class="mt-4 mb-3">$1</h4>');
+        htmlContent = htmlContent.replace(/^# (.*$)/gim, '<h3 class="mt-4 mb-3">$1</h3>');
+        
+        // Handle bold and italic
+        htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        htmlContent = htmlContent.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // Handle lists
+        htmlContent = htmlContent.replace(/^- (.*$)/gim, '<li>$1</li>');
+        htmlContent = htmlContent.replace(/(<li>.*<\/li>)/s, '<ul class="mb-3">$1</ul>');
+        
+        // Handle paragraphs
+        htmlContent = htmlContent.replace(/\n\n/g, '</p><p>');
+        htmlContent = '<p>' + htmlContent + '</p>';
+        
+        // Clean up empty paragraphs
+        htmlContent = htmlContent.replace(/<p><\/p>/g, '');
+        htmlContent = htmlContent.replace(/<p><h/g, '<h');
+        htmlContent = htmlContent.replace(/<\/h([1-6])><\/p>/g, '</h$1>');
+        htmlContent = htmlContent.replace(/<p><ul/g, '<ul');
+        htmlContent = htmlContent.replace(/<\/ul><\/p>/g, '</ul>');
+        
+        // Display the content
+        const summaryContainer = document.getElementById('summaryResult');
+        summaryContainer.innerHTML = htmlContent;
+        summaryContainer.style.display = 'block';
+        
+        // Show action buttons
         document.getElementById('summaryActions').style.display = 'block';
         document.getElementById('clearBtn').style.display = 'block';
+        
+        console.log('Summary displayed successfully'); // Debug log
     }
     
     function updateSummaryMetadata(data) {
@@ -398,8 +484,9 @@
     
     function showAlert(message, type) {
         // Create and show Bootstrap alert
+        const alertType = type === 'error' ? 'danger' : type === 'info' ? 'primary' : 'success';
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show`;
         alertDiv.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -409,12 +496,13 @@
         const content = document.querySelector('.main-content');
         content.insertBefore(alertDiv, content.firstChild);
         
-        // Auto-hide after 5 seconds
+        // Auto-hide after 5 seconds for info and success, 8 seconds for errors
+        const hideTimeout = type === 'error' ? 8000 : 5000;
         setTimeout(() => {
             if (alertDiv.parentNode) {
                 alertDiv.remove();
             }
-        }, 5000);
+        }, hideTimeout);
     }
 </script>
 {% endblock %}

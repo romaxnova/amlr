@@ -139,7 +139,23 @@ def api_generate_summary():
             latest_paper_date = existing_summary['latest_paper_date']
             new_papers = db.get_papers_after_date(latest_paper_date)
             
-            if new_papers:
+            if not new_papers:
+                # No new papers - return existing summary with info message
+                return jsonify({
+                    'summary': existing_summary['content'],
+                    'total_papers': existing_summary['paper_count'],
+                    'new_papers': 0,
+                    'version': existing_summary['version'],
+                    'update_type': 'no_update',
+                    'message': 'No new papers found since last update. Displaying existing summary.',
+                    'trends': {
+                        'key_trends': existing_summary['key_trends'],
+                        'therapeutic_targets': existing_summary['therapeutic_targets'],
+                        'prognostic_markers': existing_summary['prognostic_markers']
+                    },
+                    'generated_at': existing_summary['created_at']
+                })
+            else:
                 # Generate incremental update
                 updated_content = analyzer.generate_incremental_summary(
                     existing_summary['content'], new_papers, language
@@ -161,23 +177,9 @@ def api_generate_summary():
                     'new_papers': len(new_papers),
                     'version': version,
                     'update_type': 'incremental',
+                    'message': f'Summary updated with {len(new_papers)} new papers.',
                     'trends': trends,
                     'generated_at': datetime.now().isoformat()
-                })
-            else:
-                # Return existing summary
-                return jsonify({
-                    'summary': existing_summary['content'],
-                    'total_papers': existing_summary['paper_count'],
-                    'new_papers': 0,
-                    'version': existing_summary['version'],
-                    'update_type': 'existing',
-                    'trends': {
-                        'key_trends': existing_summary['key_trends'],
-                        'therapeutic_targets': existing_summary['therapeutic_targets'],
-                        'prognostic_markers': existing_summary['prognostic_markers']
-                    },
-                    'generated_at': existing_summary['created_at']
                 })
         else:
             # Generate new complete summary
@@ -197,6 +199,7 @@ def api_generate_summary():
                 'new_papers': len(papers),
                 'version': version,
                 'update_type': 'complete',
+                'message': 'New comprehensive summary generated.',
                 'trends': trends,
                 'generated_at': datetime.now().isoformat()
             })
@@ -301,6 +304,30 @@ def api_key_terms():
     try:
         terms = db.get_all_key_terms()
         return jsonify({'key_terms': terms})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_summary/<language>')
+def api_get_summary(language):
+    """Get existing summary for a language"""
+    try:
+        summary = db.get_latest_summary(language)
+        if summary:
+            return jsonify({
+                'summary': summary['content'],
+                'total_papers': summary['paper_count'],
+                'version': summary['version'],
+                'update_type': 'existing',
+                'trends': {
+                    'key_trends': summary['key_trends'],
+                    'therapeutic_targets': summary['therapeutic_targets'],
+                    'prognostic_markers': summary['prognostic_markers']
+                },
+                'generated_at': summary['created_at'],
+                'exists': True
+            })
+        else:
+            return jsonify({'exists': False})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
