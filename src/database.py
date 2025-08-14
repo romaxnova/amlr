@@ -83,6 +83,44 @@ class DatabaseManager:
                 )
             ''')
             
+            # Create timeline entries table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS timeline_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pmid TEXT,
+                    title TEXT NOT NULL,
+                    date TEXT,
+                    journal TEXT,
+                    summary TEXT,
+                    week_of TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create system metadata table for tracking updates
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS system_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create specialized summaries table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS specialized_summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    focus_terms TEXT NOT NULL,  -- JSON array of focus terms
+                    content TEXT NOT NULL,
+                    paper_count INTEGER NOT NULL,
+                    paper_pmids TEXT,  -- JSON array of PMIDs used
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # Initialize settings if not exists
             cursor.execute('''
                 INSERT OR IGNORE INTO settings (key, value) 
@@ -337,3 +375,198 @@ class DatabaseManager:
             cursor.execute("SELECT value FROM settings WHERE key = 'summary_version'")
             result = cursor.fetchone()
             return int(result[0]) if result else 0
+    
+    # New methods for timeline and scheduling
+    def save_timeline_entries(self, entries: List[Dict], week_of: str):
+        """Save timeline entries for a specific week"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                for entry in entries:
+                    cursor.execute('''
+                        INSERT INTO timeline_entries 
+                        (pmid, title, date, journal, summary, week_of)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        entry.get('pmid'),
+                        entry.get('title'),
+                        entry.get('date'),
+                        entry.get('journal'),
+                        entry.get('summary'),
+                        week_of
+                    ))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error saving timeline entries: {e}")
+            return False
+    
+    def get_timeline_entries(self, weeks_back: int = 4) -> List[Dict]:
+        """Get timeline entries for the last N weeks"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT pmid, title, date, journal, summary, week_of, created_at
+                    FROM timeline_entries 
+                    ORDER BY week_of DESC, created_at DESC
+                    LIMIT ?
+                ''', (weeks_back * 10,))  # Assume max 10 papers per week
+                
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error getting timeline entries: {e}")
+            return []
+    
+    def get_last_update(self) -> str:
+        """Get last update timestamp"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM system_metadata WHERE key = 'last_update'")
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            print(f"Error getting last update: {e}")
+            return None
+    
+    def update_last_update(self):
+        """Update last update timestamp"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT OR REPLACE INTO system_metadata (key, value, updated_at)
+                    VALUES ('last_update', ?, CURRENT_TIMESTAMP)
+                ''', (datetime.now().strftime('%Y-%m-%d'),))
+                conn.commit()
+        except Exception as e:
+            print(f"Error updating last update: {e}")
+    
+    def paper_exists(self, pmid: str) -> bool:
+        """Check if paper already exists in database"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM papers WHERE pmid = ?", (pmid,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"Error checking paper existence: {e}")
+            return False
+    
+    def get_recent_papers(self, limit: int = 50) -> List[Dict]:
+        """Get recent papers for summary generation"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT pmid, title, main_findings, publish_date, journal
+                    FROM papers 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                ''', (limit,))
+                
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error getting recent papers: {e}")
+            return []
+    
+    def save_specialized_summary(self, name: str, language: str, focus_terms: List[str], 
+                               content: str, papers: List[Dict]) -> int:
+        """Save a specialized summary to the database"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                paper_pmids = [p.get('pmid') for p in papers if p.get('pmid')]
+                
+                cursor.execute('''
+                    INSERT INTO specialized_summaries 
+                    (name, language, focus_terms, content, paper_count, paper_pmids)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    name,
+                    language,
+                    json.dumps(focus_terms),
+                    content,
+                    len(papers),
+                    json.dumps(paper_pmids)
+                ))
+                
+                summary_id = cursor.lastrowid
+                conn.commit()
+                return summary_id
+                
+        except Exception as e:
+            print(f"Error saving specialized summary: {e}")
+            return 0
+    
+    def get_specialized_summaries(self, limit: int = 20) -> List[Dict]:
+        """Get all specialized summaries"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, name, language, focus_terms, content, paper_count, 
+                           created_at, updated_at
+                    FROM specialized_summaries 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                ''', (limit,))
+                
+                columns = [desc[0] for desc in cursor.description]
+                summaries = []
+                
+                for row in cursor.fetchall():
+                    summary = dict(zip(columns, row))
+                    # Parse JSON fields
+                    summary['focus_terms'] = json.loads(summary['focus_terms'])
+                    summaries.append(summary)
+                
+                return summaries
+                
+        except Exception as e:
+            print(f"Error getting specialized summaries: {e}")
+            return []
+    
+    def get_specialized_summary(self, summary_id: int) -> Optional[Dict]:
+        """Get a specific specialized summary by ID"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, name, language, focus_terms, content, paper_count, 
+                           paper_pmids, created_at, updated_at
+                    FROM specialized_summaries 
+                    WHERE id = ?
+                ''', (summary_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    columns = [desc[0] for desc in cursor.description]
+                    summary = dict(zip(columns, row))
+                    # Parse JSON fields
+                    summary['focus_terms'] = json.loads(summary['focus_terms'])
+                    summary['paper_pmids'] = json.loads(summary['paper_pmids'])
+                    return summary
+                
+                return None
+                
+        except Exception as e:
+            print(f"Error getting specialized summary: {e}")
+            return None
+    
+    def delete_specialized_summary(self, summary_id: int) -> bool:
+        """Delete a specialized summary"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM specialized_summaries WHERE id = ?', (summary_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            print(f"Error deleting specialized summary: {e}")
+            return False

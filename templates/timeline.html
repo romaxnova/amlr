@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Research Timeline</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <span class="badge bg-info">Auto-updated weekly</span>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    This timeline shows new AML & TP53 research papers discovered each week through automated updates.
+    The system automatically searches for new papers every Monday and updates this timeline.
+</div>
+
+{% if weeks_data %}
+    {% for week, entries in weeks_data.items() %}
+    <div class="card stats-card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-calendar-week"></i> Week of {{ week }}
+                <span class="badge bg-primary ms-2">{{ entries|length }} new papers</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            {% for entry in entries %}
+            <div class="border-start border-primary border-3 ps-3 mb-3">
+                <div class="row">
+                    <div class="col-md-9">
+                        <h6 class="mb-1">
+                            {% if entry.pmid %}
+                            <a href="https://pubmed.ncbi.nlm.nih.gov/{{ entry.pmid }}/" target="_blank" class="text-decoration-none">
+                                {{ entry.title }}
+                            </a>
+                            {% else %}
+                            {{ entry.title }}
+                            {% endif %}
+                        </h6>
+                        <p class="text-muted mb-1">
+                            <strong>Journal:</strong> {{ entry.journal or 'Unknown' }} | 
+                            <strong>Date:</strong> {{ entry.date or 'Unknown' }}
+                            {% if entry.pmid %}
+                            | <strong>PMID:</strong> {{ entry.pmid }}
+                            {% endif %}
+                        </p>
+                        {% if entry.summary %}
+                        <p class="small text-secondary mb-0">{{ entry.summary }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3 text-end">
+                        {% if entry.pmid %}
+                        <a href="https://pubmed.ncbi.nlm.nih.gov/{{ entry.pmid }}/" target="_blank" 
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-box-arrow-up-right"></i> View
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card stats-card">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-calendar-x text-muted" style="font-size: 3rem;"></i>
+            <h4 class="text-muted mt-3">No Timeline Data</h4>
+            <p class="text-muted">
+                No weekly updates have been recorded yet. The automated system will begin 
+                populating this timeline with new research discoveries.
+            </p>
+            <p class="text-muted small">
+                <strong>Note:</strong> The system updates every Monday at 9 AM with new papers from the past week.
+            </p>
+        </div>
+    </div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh timeline every 5 minutes to show any new updates
+setInterval(function() {
+    // Only refresh if it's Monday between 9-10 AM (when updates typically happen)
+    const now = new Date();
+    if (now.getDay() === 1 && now.getHours() === 9) {
+        location.reload();
+    }
+}, 300000); // 5 minutes
+</script>
+{% endblock %}

@@ -11,6 +11,7 @@ from src.database import DatabaseManager
 from src.pubmed_scraper import PubMedScraper
 from src.ai_analyzer import AIAnalyzer
 from src.export_manager import ExportManager
+from src.scheduler import WeeklyScheduler
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +24,10 @@ db = DatabaseManager()
 scraper = PubMedScraper()
 analyzer = AIAnalyzer()
 exporter = ExportManager()
+scheduler = WeeklyScheduler()
+
+# Start the weekly scheduler
+scheduler.start_scheduler()
 
 @app.route('/')
 def index():
@@ -214,20 +219,127 @@ def api_generate_summary():
 def api_export_summary():
     """Export summary to PDF"""
     try:
-        summary_text = request.json.get('summary', '')
-        language = request.json.get('language', 'en')
+        data = request.json
+        summary_text = data.get('summary', '')
+        language = data.get('language', 'en')
+        title = data.get('title', f"AML Research Summary ({language.upper()})")
+        focus_terms = data.get('focus_terms', [])
         
         if not summary_text:
             return jsonify({'error': 'No summary provided'}), 400
         
+        # Add focus terms info to title if available
+        if focus_terms:
+            title += f" - Focus: {', '.join(focus_terms)}"
+        
         # Export to PDF
         filename = exporter.export_summary_to_pdf(
             summary_text, 
-            title=f"AML Research Summary ({language.upper()})"
+            title=title
         )
         
-        return send_file(filename, as_attachment=True)
+        return send_file(filename, as_attachment=False, mimetype='application/pdf')
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_summary/<language>')
+def api_get_summary(language):
+    """Get existing summary for a language"""
+    try:
+        summary = db.get_latest_summary(language)
+        if summary:
+            return jsonify({
+                'exists': True,
+                'summary': {
+                    'content': summary['content'],
+                    'version': summary['version'],
+                    'paper_count': summary['paper_count'],
+                    'generated_at': summary['created_at'],
+                    'trends': {
+                        'key_trends': summary.get('key_trends', []),
+                        'therapeutic_targets': summary.get('therapeutic_targets', []),
+                        'prognostic_markers': summary.get('prognostic_markers', [])
+                    }
+                }
+            })
+        else:
+            return jsonify({'exists': False})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate_specialized_summary', methods=['POST'])
+def api_generate_specialized_summary():
+    """Generate specialized summary with selected key terms"""
+    try:
+        language = request.json.get('language', 'en')
+        selected_terms = request.json.get('selected_terms', [])
+        summary_name = request.json.get('summary_name', 'Specialized Summary')
+        
+        if not selected_terms:
+            return jsonify({'error': 'At least one key term must be selected'}), 400
+        
+        # Get papers filtered by selected terms
+        papers = db.get_papers_by_terms(selected_terms)
+        
+        if not papers:
+            return jsonify({'error': f'No papers found containing the selected terms: {", ".join(selected_terms)}'}), 400
+        
+        # Generate specialized summary focusing on the selected terms
+        summary = analyzer.generate_specialized_summary(papers, selected_terms, language, summary_name)
+        
+        # Save the specialized summary to database
+        summary_id = db.save_specialized_summary(
+            name=summary_name,
+            language=language,
+            focus_terms=selected_terms,
+            content=summary,
+            papers=papers
+        )
+        
+        return jsonify({
+            'summary': summary,
+            'total_papers': len(papers),
+            'focus_terms': selected_terms,
+            'summary_name': summary_name,
+            'summary_id': summary_id,
+            'language': language,
+            'generated_at': datetime.now().isoformat()
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/specialized_summaries')
+def api_get_specialized_summaries():
+    """Get all specialized summaries"""
+    try:
+        summaries = db.get_specialized_summaries()
+        return jsonify({'summaries': summaries})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/specialized_summary/<int:summary_id>')
+def api_get_specialized_summary(summary_id):
+    """Get a specific specialized summary"""
+    try:
+        summary = db.get_specialized_summary(summary_id)
+        if summary:
+            return jsonify({'summary': summary})
+        else:
+            return jsonify({'error': 'Summary not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/specialized_summary/<int:summary_id>', methods=['DELETE'])
+def api_delete_specialized_summary(summary_id):
+    """Delete a specialized summary"""
+    try:
+        success = db.delete_specialized_summary(summary_id)
+        if success:
+            return jsonify({'message': 'Summary deleted successfully'})
+        else:
+            return jsonify({'error': 'Summary not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -318,29 +430,32 @@ def api_key_terms():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/get_summary/<language>')
-def api_get_summary(language):
-    """Get existing summary for a language"""
+@app.route('/timeline')
+def timeline():
+    """Weekly timeline of new research"""
+    timeline_entries = db.get_timeline_entries(weeks_back=8)
+    
+    # Group entries by week
+    weeks_data = {}
+    for entry in timeline_entries:
+        week = entry['week_of']
+        if week not in weeks_data:
+            weeks_data[week] = []
+        weeks_data[week].append(entry)
+    
+    return render_template('timeline.html', 
+                         current_endpoint='timeline',
+                         weeks_data=weeks_data)
+
+@app.route('/force-update')
+def force_update():
+    """Manual trigger for weekly update (development only)"""
     try:
-        summary = db.get_latest_summary(language)
-        if summary:
-            return jsonify({
-                'summary': summary['content'],
-                'total_papers': summary['paper_count'],
-                'version': summary['version'],
-                'update_type': 'existing',
-                'trends': {
-                    'key_trends': summary['key_trends'],
-                    'therapeutic_targets': summary['therapeutic_targets'],
-                    'prognostic_markers': summary['prognostic_markers']
-                },
-                'generated_at': summary['created_at'],
-                'exists': True
-            })
-        else:
-            return jsonify({'exists': False})
+        scheduler.force_update()
+        flash("Weekly update triggered successfully!", "success")
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        flash(f"Update failed: {str(e)}", "error")
+    return redirect(url_for('timeline'))
 
 @app.route('/analytics')
 def analytics():

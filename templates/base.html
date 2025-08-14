@@ -44,12 +44,41 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             color: white;
         }
+        .summary-box-clickable {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .summary-box-clickable:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }
         .alert-dismissible .btn-close {
             position: absolute;
             top: 0;
             right: 0;
             z-index: 2;
             padding: 1.25rem 1rem;
+        }
+        .summary-content {
+            line-height: 1.6;
+        }
+        .summary-content h3, .summary-content h4, .summary-content h5 {
+            color: #495057;
+            font-weight: 600;
+        }
+        .summary-content ul {
+            padding-left: 1.5rem;
+        }
+        .summary-content li {
+            margin-bottom: 0.5rem;
+        }
+        .summary-content p {
+            text-align: justify;
+            margin-bottom: 1rem;
+        }
+        .summary-content strong {
+            color: #212529;
         }
     </style>
 </head>
@@ -72,12 +101,17 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if current_endpoint == 'generate_summary' %}active{% endif %}" href="{{ url_for('generate_summary') }}">
-                                <i class="bi bi-file-text"></i> Generate Summary
+                                <i class="bi bi-file-text"></i> Summary
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if current_endpoint == 'browse' %}active{% endif %}" href="{{ url_for('browse') }}">
                                 <i class="bi bi-database"></i> Browse Database
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if current_endpoint == 'timeline' %}active{% endif %}" href="{{ url_for('timeline') }}">
+                                <i class="bi bi-clock-history"></i> Research Timeline
                             </a>
                         </li>
                         <li class="nav-item">
