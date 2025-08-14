@@ -264,9 +264,8 @@ class DatabaseManager:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Create placeholders for terms
+            # Create placeholders for terms (case sensitive match)
             placeholders = ','.join(['?' for _ in terms])
-            terms_lower = [term.lower() for term in terms]
             
             cursor.execute(f'''
                 SELECT DISTINCT p.* FROM papers p
@@ -274,7 +273,7 @@ class DatabaseManager:
                 JOIN key_terms kt ON pt.term_id = kt.id
                 WHERE kt.term IN ({placeholders})
                 ORDER BY p.publish_date DESC
-            ''', terms_lower)
+            ''', terms)
             
             return [dict(row) for row in cursor.fetchall()]
     

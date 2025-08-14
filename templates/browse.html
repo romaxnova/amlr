@@ -56,6 +56,19 @@
                     </button>
                 </div>
             </div>
+            
+            <!-- Key Terms Filter -->
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <label class="form-label">Filter by Key Terms (Optional)</label>
+                    <div class="border rounded p-3" style="max-height: 150px; overflow-y: auto;" id="keyTermsContainer">
+                        <div class="text-center text-muted" id="loadingTerms">
+                            <i class="bi bi-hourglass-split"></i> Loading key terms...
+                        </div>
+                    </div>
+                    <small class="text-muted">Select key terms to filter papers. Multiple terms work as OR filters.</small>
+                </div>
+            </div>
         </form>
     </div>
 </div>
@@ -64,8 +77,15 @@
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> 
     Showing {{ papers|length }} papers
-    {% if search_query or selected_type or selected_year %}
-    (filtered)
+    {% if search_query or selected_type or selected_year or selected_key_terms %}
+    (filtered
+    {% if search_query %}by search{% endif %}
+    {% if selected_type %}{% if search_query %}, {% endif %}by type{% endif %}
+    {% if selected_year %}{% if search_query or selected_type %}, {% endif %}by year{% endif %}
+    {% if selected_key_terms %}{% if search_query or selected_type or selected_year %}, {% endif %}by {{ selected_key_terms|length }} key term(s){% endif %})
+    {% endif %}
+    {% if selected_key_terms %}
+    <br><small><strong>Selected key terms:</strong> {{ selected_key_terms|join(', ') }}</small>
     {% endif %}
 </div>
 
@@ -82,7 +102,6 @@
                         <th>Date</th>
                         <th>Type</th>
                         <th>PMID</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -119,17 +138,10 @@
                             <span class="text-muted">N/A</span>
                             {% endif %}
                         </td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-outline-primary" 
-                                    data-bs-toggle="modal" data-bs-target="#paperModal"
-                                    onclick="showPaperDetails({{ paper|tojson }})">
-                                <i class="bi bi-eye"></i> View
-                            </button>
-                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center py-4">
+                        <td colspan="6" class="text-center py-4">
                             <div class="text-muted">
                                 <i class="bi bi-inbox"></i><br>
                                 No papers found matching your criteria.
@@ -157,9 +169,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <a id="pubmedLink" href="#" target="_blank" class="btn btn-primary">
+                <button id="pubmedLink" type="button" class="btn btn-primary" onclick="openPubMedLink()">
                     <i class="bi bi-box-arrow-up-right"></i> View on PubMed
-                </a>
+                </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -170,11 +182,23 @@
 
 {% block scripts %}
 <script>
+let currentPmid = null; // Global variable to store current PMID
+
+function openPubMedLink() {
+    if (currentPmid) {
+        const url = `https://pubmed.ncbi.nlm.nih.gov/${currentPmid}/`;
+        console.log('Opening PubMed URL:', url);
+        window.open(url, '_blank');
+    } else {
+        console.log('No PMID available');
+        alert('No PubMed ID available for this paper');
+    }
+}
+
 function showPaperDetails(paper) {
     const modal = document.getElementById('paperModal');
     const title = document.getElementById('paperModalTitle');
     const content = document.getElementById('paperModalContent');
-    const pubmedLink = document.getElementById('pubmedLink');
     
     title.textContent = paper.title || 'Unknown Title';
     
@@ -231,11 +255,18 @@ function showPaperDetails(paper) {
     content.innerHTML = html;
     
     // Update PubMed link
+    console.log('Paper PMID:', paper.pmid); // Debug
+    currentPmid = paper.pmid; // Store globally
+    
+    const pubmedButton = document.getElementById('pubmedLink');
     if (paper.pmid) {
-        pubmedLink.href = `https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/`;
-        pubmedLink.style.display = 'inline-block';
+        console.log('PMID available, enabling button'); // Debug
+        pubmedButton.style.display = 'inline-block';
+        pubmedButton.disabled = false;
     } else {
-        pubmedLink.style.display = 'none';
+        console.log('No PMID found, disabling button'); // Debug
+        pubmedButton.style.display = 'none';
+        pubmedButton.disabled = true;
     }
 }
 
@@ -243,6 +274,9 @@ function showPaperDetails(paper) {
 document.addEventListener('DOMContentLoaded', function() {
     const typeSelect = document.getElementById('type');
     const yearSelect = document.getElementById('year');
+    
+    // Load key terms
+    loadKeyTerms();
     
     typeSelect.addEventListener('change', function() {
         this.form.submit();
@@ -252,5 +286,57 @@ document.addEventListener('DOMContentLoaded', function() {
         this.form.submit();
     });
 });
+
+function loadKeyTerms() {
+    fetch('/api/key_terms')
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('keyTermsContainer');
+        const loadingDiv = document.getElementById('loadingTerms');
+        
+        if (data.key_terms && data.key_terms.length > 0) {
+            // Sort by frequency and take top 20 for browse page
+            const sortedTerms = data.key_terms
+                .sort((a, b) => b.frequency - a.frequency)
+                .slice(0, 20);
+            
+            container.innerHTML = '';
+            sortedTerms.forEach(term => {
+                const div = document.createElement('div');
+                div.className = 'form-check form-check-inline mb-2';
+                div.innerHTML = `
+                    <input class="form-check-input" type="checkbox" name="key_terms" value="${term.term}" id="term_${term.term.replace(/[^a-zA-Z0-9]/g, '_')}"
+                           ${getSelectedKeyTerms().includes(term.term) ? 'checked' : ''}>
+                    <label class="form-check-label" for="term_${term.term.replace(/[^a-zA-Z0-9]/g, '_')}">
+                        ${term.term} <span class="badge bg-secondary">${term.frequency}</span>
+                    </label>
+                `;
+                container.appendChild(div);
+            });
+            
+            // Add change listeners to auto-submit form
+            container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    // Small delay to allow multiple selections
+                    setTimeout(() => {
+                        this.form.submit();
+                    }, 300);
+                });
+            });
+        } else {
+            loadingDiv.innerHTML = '<i class="bi bi-info-circle"></i> No key terms available.';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading key terms:', error);
+        const loadingDiv = document.getElementById('loadingTerms');
+        loadingDiv.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Failed to load key terms.';
+    });
+}
+
+function getSelectedKeyTerms() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.getAll('key_terms') || [];
+}
 </script>
 {% endblock %}

@@ -241,6 +241,7 @@ def browse():
     search_query = request.args.get('search', '')
     article_type = request.args.get('type', '')
     year = request.args.get('year', '')
+    selected_key_terms = request.args.getlist('key_terms')  # Get multiple selected terms
     
     # Get papers (for now, get all - in production, implement pagination)
     papers = db.get_all_papers()
@@ -256,6 +257,15 @@ def browse():
     if year:
         papers = [p for p in papers if p.get('publish_date', '').startswith(year)]
     
+    # Filter by key terms if any are selected
+    if selected_key_terms:
+        # Use the database method to get papers by terms
+        papers_by_terms = db.get_papers_by_terms(selected_key_terms)
+        # Convert to list of PMIDs for filtering
+        term_pmids = set(p.get('pmid') for p in papers_by_terms if p.get('pmid'))
+        # Filter current papers to only those with selected terms
+        papers = [p for p in papers if p.get('pmid') in term_pmids]
+    
     # Get unique values for filters
     all_papers = db.get_all_papers()
     article_types = list(set(p.get('article_type', '') for p in all_papers if p.get('article_type')))
@@ -269,6 +279,7 @@ def browse():
                          search_query=search_query,
                          selected_type=article_type,
                          selected_year=year,
+                         selected_key_terms=selected_key_terms,
                          current_endpoint='browse')
 
 @app.route('/api/export_csv')
